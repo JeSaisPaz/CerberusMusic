@@ -1,5 +1,9 @@
-import md5Import from 'js-md5';
-const md5 = md5Import as unknown as (message: string) => string;
+import * as jsMd5 from 'js-md5';
+const md5 = (
+  typeof jsMd5 === 'function'
+    ? jsMd5
+    : (jsMd5 as any).default || (jsMd5 as any).md5 || jsMd5
+) as (message: string) => string;
 
 export interface SubsonicCredentials {
   url: string;

@@ -104,7 +104,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
           </button>
 
           <div style={styles.setupContainer}>
-            <a href="/app" style={styles.setupLink} target="_self">
+            <a href={`http://${window.location.hostname}:4534/app/`} style={styles.setupLink} target="_blank" rel="noopener noreferrer">
               First-time Setup / Server Admin Panel
             </a>
           </div>

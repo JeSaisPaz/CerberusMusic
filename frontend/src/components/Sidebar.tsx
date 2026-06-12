@@ -150,7 +150,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer Area with Logout & Admin */}
       <div style={styles.footer}>
-        <a href="/app" target="_blank" rel="noopener noreferrer" style={styles.adminBtn}>
+        <a href={`http://${window.location.hostname}:4534/app/`} target="_blank" rel="noopener noreferrer" style={styles.adminBtn}>
           <Settings size={16} />
           <span>Admin Panel</span>
         </a>
