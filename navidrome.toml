@@ -1,0 +1,5 @@
+# Cerberus Music - Navidrome Configuration
+
+# Configure split tags so featuring artists are imported as separate artists in the DB
+[Tags]
+artist.split = ["/", " / ", " feat. ", " feat ", " ft. ", " ft ", "; ", " & "]

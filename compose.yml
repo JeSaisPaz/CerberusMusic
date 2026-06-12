@@ -1,0 +1,42 @@
+version: '3'
+
+services:
+  navidrome:
+    container_name: navidrome
+    image: deluan/navidrome:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "4534:4533" # Backend shifted to port 4534 on the host
+    environment:
+      - ND_BASEURL=/
+      - ND_LOGLEVEL=info
+      - ND_SCANINTERVAL=1h
+      - ND_MUSICFOLDER=/music
+      - ND_DATAFOLDER=/data
+      - ND_CONFIGFILE=/data/navidrome.toml
+      - ND_PORT=4533
+    volumes:
+      - "/mnt/DISK1/Containers/navidrome/cache:/cache"
+      - "/mnt/DISK1/Containers/navidrome/data:/data"
+      - "/mnt/DISK1/music:/music"
+      - "./navidrome.toml:/data/navidrome.toml:ro" # Mount custom artist split rules
+    networks:
+      - proxy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cerberus-frontend
+    restart: unless-stopped
+    ports:
+      - "4533:80" # Custom frontend (Cerberus Music) now runs on port 4533!
+    depends_on:
+      - navidrome
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

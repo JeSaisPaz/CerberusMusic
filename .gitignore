@@ -1,0 +1,21 @@
+# Cerberus Music - Git Ignore
+
+# Navidrome data and cache
+/data/
+/music/
+
+# Node modules
+node_modules/
+frontend/node_modules/
+
+# Production build output
+frontend/dist/
+frontend/node_modules/.tmp/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Local env files
+.env
+.env.local
