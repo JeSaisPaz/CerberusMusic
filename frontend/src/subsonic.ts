@@ -75,7 +75,10 @@ export class SubsonicClient {
     // Generate a random salt
     this.salt = Math.random().toString(36).substring(2, 12);
     // Token is md5(password + salt)
+    console.log("jsMd5 raw:", jsMd5);
+    console.log("md5 function type:", typeof md5, "md5 function:", md5);
     this.token = md5(password + this.salt);
+    console.log("MD5 Input:", password + "[SALT:" + this.salt + "]", "MD5 Output:", this.token);
   }
 
   public isAuthenticated(): boolean {
