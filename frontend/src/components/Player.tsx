@@ -170,7 +170,7 @@ export const Player: React.FC<PlayerProps> = ({
             disabled={!currentTrack}
             title={isPlaying ? "Pause" : "Play"}
           >
-            {isPlaying ? <Pause size={20} fill="#fff" color="#fff" /> : <Play size={20} fill="#fff" color="#fff" style={{ marginLeft: 3 }} />}
+            {isPlaying ? <Pause size={20} color="#fff" /> : <Play size={20} color="#fff" style={{ marginLeft: 3 }} />}
           </button>
 
           <button onClick={onNext} style={styles.controlBtn} disabled={!currentTrack} title="Next">

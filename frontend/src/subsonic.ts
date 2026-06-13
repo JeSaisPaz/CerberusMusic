@@ -184,6 +184,10 @@ export class SubsonicClient {
   private salt: string = '';
   private clientName: string = 'CerberusMusic';
   private apiVersion: string = '1.16.1';
+  
+  // Cache for overridden playlists to avoid fetching playlists on every album query
+  private overriddenAlbumsCache: any[] | null = null;
+  private overriddenPlaylistsFetched: number = 0;
 
   constructor() {
     this.loadCredentials();
@@ -328,10 +332,38 @@ export class SubsonicClient {
       size: size.toString(),
       offset: offset.toString()
     });
-    return res.albumList2?.album || [];
+    const nativeAlbums = res.albumList2?.album || [];
+    
+    // Inject overridden playlists if applicable
+    const overrides = await this.getOverriddenAlbums();
+    if (overrides.length > 0) {
+      if (type === 'newest' || type === 'recent') {
+        return [...overrides, ...nativeAlbums].slice(0, size);
+      } else if (type === 'alphabeticalByName') {
+        const combined = [...nativeAlbums, ...overrides].sort((a, b) => a.name.localeCompare(b.name));
+        return combined.slice(offset, offset + size);
+      } else if (type === 'random') {
+        const combined = [...nativeAlbums, ...overrides].sort(() => 0.5 - Math.random());
+        return combined.slice(0, size);
+      }
+    }
+    return nativeAlbums;
   }
 
   public async getAlbum(id: string): Promise<any> {
+    // Check if this ID is actually an overridden playlist
+    const overrides = await this.getOverriddenAlbums();
+    const override = overrides.find(o => o.id === id);
+    if (override) {
+      const pl = await this.getPlaylist(id);
+      return {
+        ...override,
+        song: pl.entry || [],
+        songCount: pl.songCount || 0,
+        duration: pl.duration || 0,
+      };
+    }
+
     const res = await this.request('getAlbum.view', { id });
     return res.album || null;
   }
@@ -398,12 +430,46 @@ export class SubsonicClient {
   public async getPlaylists(): Promise<any[]> {
     const res = await this.request('getPlaylists.view');
     const playlists = res.playlists?.playlist || [];
-    // Filter out auto-imported M3U albums: they often don't match the current user's username or end in .m3u
-    return playlists.filter((p: any) => 
-      p.owner === this.username && 
-      !p.name.toLowerCase().endsWith('.m3u') && 
-      !p.name.toLowerCase().endsWith('.m3u8')
-    );
+    
+    // Refresh cache implicitly
+    const overrides: any[] = [];
+    const validPlaylists: any[] = [];
+    
+    for (const p of playlists) {
+      const isAutoImported = p.name.toLowerCase().endsWith('.m3u') || p.name.toLowerCase().endsWith('.m3u8');
+      
+      if (p.comment && p.comment.includes('[CERBERUS_ALBUM]')) {
+        try {
+          const jsonStr = p.comment.replace('[CERBERUS_ALBUM]', '').trim();
+          const meta = JSON.parse(jsonStr);
+          overrides.push({
+            id: p.id,
+            name: meta.album || p.name,
+            artist: meta.artist || 'Unknown Artist',
+            coverArt: meta.coverArt || null, // special handling later
+            isCerberusOverride: true,
+            _cerberusCover: meta.coverArt
+          });
+        } catch (e) {
+          console.warn('Failed to parse cerberus album override for playlist', p.id);
+        }
+      } else if (p.owner === this.username && !isAutoImported) {
+        validPlaylists.push(p);
+      }
+    }
+    
+    this.overriddenAlbumsCache = overrides;
+    this.overriddenPlaylistsFetched = Date.now();
+    
+    return validPlaylists;
+  }
+  
+  public async getOverriddenAlbums(): Promise<any[]> {
+    if (this.overriddenAlbumsCache && (Date.now() - this.overriddenPlaylistsFetched < 60000)) {
+      return this.overriddenAlbumsCache;
+    }
+    await this.getPlaylists(); // implicitly refreshes cache
+    return this.overriddenAlbumsCache || [];
   }
 
   public async getPlaylist(id: string): Promise<any> {
@@ -426,21 +492,37 @@ export class SubsonicClient {
     await this.request('deletePlaylist.view', { id });
   }
 
-  public async updatePlaylist(id: string, songIdsToAdd: string[], songIdsToRemoveIndexes: number[]): Promise<void> {
+  public async updatePlaylist(id: string, songIdsToAdd: string[] = [], songIdsToRemoveIndexes: number[] = [], comment?: string): Promise<void> {
     const params: Record<string, string> = { playlistId: id };
+    
+    // If comment is provided, we can update it in the first request
+    // Subsonic updatePlaylist allows updating name, comment, public
+    if (comment !== undefined) {
+      params.comment = comment;
+    }
+    
+    if (songIdsToAdd.length === 0 && songIdsToRemoveIndexes.length === 0) {
+      // Just update metadata
+      await this.request('updatePlaylist.view', params);
+      return;
+    }
     
     // Subsonic supports adding songs one-by-one or multiple.
     // Let's call them.
-    for (const songId of songIdsToAdd) {
-      await this.request('updatePlaylist.view', { ...params, songIdToAdd: songId });
+    for (let i = 0; i < songIdsToAdd.length; i++) {
+      const p = i === 0 ? { ...params, songIdToAdd: songIdsToAdd[i] } : { playlistId: id, songIdToAdd: songIdsToAdd[i] };
+      await this.request('updatePlaylist.view', p);
     }
     
     // To remove, Subsonic uses 'songIndexToRemove'
     // Sort descending to avoid index shifting problems
     const sortedToRemove = [...songIdsToRemoveIndexes].sort((a, b) => b - a);
     for (const index of sortedToRemove) {
-      await this.request('updatePlaylist.view', { ...params, songIndexToRemove: index.toString() });
+      await this.request('updatePlaylist.view', { playlistId: id, songIndexToRemove: index.toString() });
     }
+    
+    // Clear cache
+    this.overriddenPlaylistsFetched = 0;
   }
 
   // --- Advanced Spotify-like Helpers ---
@@ -478,9 +560,11 @@ export class SubsonicClient {
    */
   public async getLyrics(artist: string, title: string): Promise<string> {
     try {
+      if (!artist || !title) return '';
       const res = await this.request('getLyrics.view', { artist, title });
-      // Returns structured lyrics object
-      return res.lyrics?.value || res.lyrics || '';
+      // Navidrome returns { artist: "..", title: "..", value: "lyrics" }
+      // If no lyrics, value is omitted. We must strictly return a string.
+      return res.lyrics?.value || (typeof res.lyrics === 'string' ? res.lyrics : '');
     } catch {
       return '';
     }

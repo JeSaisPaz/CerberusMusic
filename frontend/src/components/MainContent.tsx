@@ -3,7 +3,7 @@ import { subsonic } from '../subsonic';
 import { metadataScraper } from '../metadata';
 import {
   Play, Shuffle, Heart, Music, Clock, User, Disc, Search as SearchIcon,
-  Sparkles, Plus, Trash2, ArrowLeft, RefreshCw, ListMusic
+  Sparkles, Plus, Trash2, ArrowLeft, RefreshCw, ListMusic, Wand2
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -78,6 +78,13 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [loadingPlaylist, setLoadingPlaylist] = useState<boolean>(false);
   const [playlistsList, setPlaylistsList] = useState<any[]>([]);
   const [showAddToPlaylistMenu, setShowAddToPlaylistMenu] = useState<string | null>(null);
+
+  // Identify Wizard State
+  const [showIdentifyWizard, setShowIdentifyWizard] = useState<boolean>(false);
+  const [wizardAlbumName, setWizardAlbumName] = useState<string>('');
+  const [wizardArtistName, setWizardArtistName] = useState<string>('');
+  const [wizardCoverUrl, setWizardCoverUrl] = useState<string>('');
+  const [wizardSubmitting, setWizardSubmitting] = useState<boolean>(false);
 
   // Custom Recommendations state
   const [discoverTracks, setDiscoverTracks] = useState<any[]>([]);
@@ -522,7 +529,7 @@ export const MainContent: React.FC<MainContentProps> = ({
     const renderAlbumGrid = (albums: any[]) => (
       <div style={styles.grid}>
         {albums.map(album => {
-          const coverUrl = subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
+          const coverUrl = album._cerberusCover || subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
           return (
             <div
               key={album.id}
@@ -714,7 +721,7 @@ export const MainContent: React.FC<MainContentProps> = ({
                 <h2 style={styles.searchSectionTitle}>Albums</h2>
                 <div style={styles.grid}>
                   {searchResults.albums.slice(0, 6).map(album => {
-                    const coverUrl = subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
+                    const coverUrl = album._cerberusCover || subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
                     return (
                       <div
                         key={album.id}
@@ -925,7 +932,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           ) : (
             <div style={styles.grid}>
               {artistAlbums.map(album => {
-                const coverUrl = subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
+                const coverUrl = album._cerberusCover || subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
                 return (
                   <div
                     key={album.id}
@@ -1015,6 +1022,17 @@ export const MainContent: React.FC<MainContentProps> = ({
             <Play size={22} fill="#fff" color="#fff" style={{ marginRight: 6 }} />
             Play
           </button>
+          
+          <button
+            onClick={() => setShowIdentifyWizard(true)}
+            style={{ ...styles.playAllBtn, background: 'rgba(255,255,255,0.1)' }}
+            className="btn-secondary"
+            title="Identify as Album"
+          >
+            <Wand2 size={18} color="#fff" style={{ marginRight: 6 }} />
+            Identify
+          </button>
+
           <button
             onClick={deletePlaylist}
             style={styles.circleActionBtn}
@@ -1251,7 +1269,7 @@ export const MainContent: React.FC<MainContentProps> = ({
           ) : (
             <div style={styles.grid}>
               {allAlbums.map(album => {
-                const coverUrl = subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
+                const coverUrl = album._cerberusCover || subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
                 return (
                   <div
                     key={album.id}
@@ -1465,6 +1483,94 @@ export const MainContent: React.FC<MainContentProps> = ({
         }
       ` }} />
       {renderViewContent()}
+      {/* Playlist Selector Modal */}
+      {showAddToPlaylistMenu && !showAddToPlaylistMenu.startsWith('track-') && renderPlaylistSelector()}
+
+      {/* Identify Wizard Modal */}
+      {showIdentifyWizard && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalContent}>
+            <h2 style={{ marginBottom: 16 }}>Identify as Album</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: 24, fontSize: '0.9rem' }}>
+              Convert this playlist into an album by providing its metadata. It will appear in your catalog and home page recommendations.
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={styles.inputLabel}>Album Name</label>
+              <input
+                type="text"
+                placeholder={playlistDetails?.name || "e.g. Discovery"}
+                value={wizardAlbumName}
+                onChange={e => setWizardAlbumName(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={styles.inputLabel}>Artist Name</label>
+              <input
+                type="text"
+                placeholder="e.g. Daft Punk"
+                value={wizardArtistName}
+                onChange={e => setWizardArtistName(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+
+            <div style={{ marginBottom: 24 }}>
+              <label style={styles.inputLabel}>Cover Art URL (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. https://i.imgur.com/..."
+                value={wizardCoverUrl}
+                onChange={e => setWizardCoverUrl(e.target.value)}
+                style={styles.modalInput}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button
+                onClick={() => setShowIdentifyWizard(false)}
+                style={styles.modalCancelBtn}
+                disabled={wizardSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!wizardAlbumName || !wizardArtistName) return;
+                  setWizardSubmitting(true);
+                  try {
+                    const jsonPayload = JSON.stringify({
+                      type: 'album',
+                      album: wizardAlbumName,
+                      artist: wizardArtistName,
+                      coverArt: wizardCoverUrl || null
+                    });
+                    const comment = `[CERBERUS_ALBUM] ${jsonPayload}`;
+                    await subsonic.updatePlaylist(playlistDetails.id, [], [], comment);
+                    setShowIdentifyWizard(false);
+                    // Force refresh by triggering activeView update
+                    setPlaylistTrigger(Date.now());
+                    setActiveView('all');
+                  } catch (err) {
+                    console.error('Failed to identify playlist', err);
+                  } finally {
+                    setWizardSubmitting(false);
+                  }
+                }}
+                style={{
+                  ...styles.modalSubmitBtn,
+                  opacity: (!wizardAlbumName || !wizardArtistName || wizardSubmitting) ? 0.5 : 1
+                }}
+                disabled={!wizardAlbumName || !wizardArtistName || wizardSubmitting}
+              >
+                {wizardSubmitting ? 'Saving...' : 'Save & Convert'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
