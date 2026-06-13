@@ -510,7 +510,7 @@ export class SubsonicClient {
     // Subsonic supports adding songs one-by-one or multiple.
     // Let's call them.
     for (let i = 0; i < songIdsToAdd.length; i++) {
-      const p = i === 0 ? { ...params, songIdToAdd: songIdsToAdd[i] } : { playlistId: id, songIdToAdd: songIdsToAdd[i] };
+      const p: Record<string, string> = i === 0 ? { ...params, songIdToAdd: songIdsToAdd[i] } : { playlistId: id, songIdToAdd: songIdsToAdd[i] };
       await this.request('updatePlaylist.view', p);
     }
     

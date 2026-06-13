@@ -1483,8 +1483,6 @@ export const MainContent: React.FC<MainContentProps> = ({
         }
       ` }} />
       {renderViewContent()}
-      {/* Playlist Selector Modal */}
-      {showAddToPlaylistMenu && !showAddToPlaylistMenu.startsWith('track-') && renderPlaylistSelector()}
 
       {/* Identify Wizard Modal */}
       {showIdentifyWizard && (
