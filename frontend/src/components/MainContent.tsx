@@ -3,7 +3,7 @@ import { subsonic } from '../subsonic';
 import { metadataScraper } from '../metadata';
 import {
   Play, Shuffle, Heart, Music, Clock, User, Disc, Search as SearchIcon,
-  Sparkles, Plus, Trash2, ArrowLeft, RefreshCw
+  Sparkles, Plus, Trash2, ArrowLeft, RefreshCw, ListMusic
 } from 'lucide-react';
 
 interface MainContentProps {
@@ -49,7 +49,10 @@ export const MainContent: React.FC<MainContentProps> = ({
   const [frequentAlbums, setFrequentAlbums] = useState<any[]>([]);
   const [newestAlbums, setNewestAlbums] = useState<any[]>([]);
   const [randomAlbums, setRandomAlbums] = useState<any[]>([]);
+  const [allAlbums, setAllAlbums] = useState<any[]>([]);
   const [loadingHome, setLoadingHome] = useState<boolean>(true);
+  const [loadingAll, setLoadingAll] = useState<boolean>(false);
+  const [recommendedAlbums, setRecommendedAlbums] = useState<any[]>([]);
 
   // Search states
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -95,6 +98,22 @@ export const MainContent: React.FC<MainContentProps> = ({
         setFrequentAlbums(freq);
         setNewestAlbums(news);
         setRandomAlbums(rand);
+
+        // Generate Home Recommendations based on frequent listening
+        if (freq.length > 0) {
+          const randomSeedAlbum = freq[Math.floor(Math.random() * freq.length)];
+          const seedArtist = randomSeedAlbum.artist;
+          const searchRes = await subsonic.search(seedArtist);
+          const similarAlbums = searchRes.albums.filter((a: any) => a.id !== randomSeedAlbum.id).slice(0, 8);
+          if (similarAlbums.length < 4) {
+             const fallback = await subsonic.getAlbumList('random', 8);
+             setRecommendedAlbums(fallback);
+          } else {
+             setRecommendedAlbums(similarAlbums);
+          }
+        } else {
+          setRecommendedAlbums(rand);
+        }
       } catch (err) {
         console.error('Home load error', err);
       } finally {
@@ -102,6 +121,24 @@ export const MainContent: React.FC<MainContentProps> = ({
       }
     };
     fetchHome();
+  }, [activeView]);
+
+  // Fetch All Albums
+  useEffect(() => {
+    const fetchAllAlbums = async () => {
+      if (!subsonic.isAuthenticated() || activeView !== 'all') return;
+      if (allAlbums.length > 0) return; // cache
+      setLoadingAll(true);
+      try {
+        const list = await subsonic.getAlbumList('alphabeticalByName', 500);
+        setAllAlbums(list);
+      } catch (err) {
+        console.error('All albums load error', err);
+      } finally {
+        setLoadingAll(false);
+      }
+    };
+    fetchAllAlbums();
   }, [activeView]);
 
   // Fetch playlists list (for adding tracks)
@@ -175,28 +212,24 @@ export const MainContent: React.FC<MainContentProps> = ({
         .slice(0, 20);
       setForgottenTracks(uniqueForgotten);
 
-      // 4. Build Daily Mixes based on genres
-      const genres = await subsonic.getGenres();
-      const topGenres = genres
-        .filter(g => g.songCount > 3)
-        .sort((a, b) => b.songCount - a.songCount)
-        .slice(0, 2);
+      // 4. Build Daily Mixes based on predefined styles
+      const curatedStyles = ['Hip-Hop', 'Rap', 'Gaming', 'Pop', 'Rock', 'Electronic'];
+      const targetStyles = curatedStyles.sort(() => 0.5 - Math.random()).slice(0, 3); // Pick 3 random styles
 
       const mixes: typeof dailyMixes = [];
-      for (const [index, genre] of topGenres.entries()) {
-        // Subsonic getRandomSongs with genre parameter is handled by Navidrome
-        // We will fetch search results for the genre as fallback or search tags
+      for (const style of targetStyles) {
         try {
-          const res = await subsonic.search(genre.name);
-          const genreTracks = (res.songs || [])
+          // Search for the style as a keyword/genre
+          const res = await subsonic.search(style);
+          const styleTracks = (res.songs || [])
             .sort(() => 0.5 - Math.random())
             .slice(0, 20);
           
-          if (genreTracks.length > 0) {
+          if (styleTracks.length > 0) {
             mixes.push({
-              name: `Daily Mix ${index + 1}`,
-              genre: genre.name,
-              tracks: genreTracks
+              name: `${style} Mix`,
+              genre: style,
+              tracks: styleTracks
             });
           }
         } catch {}
@@ -597,6 +630,14 @@ export const MainContent: React.FC<MainContentProps> = ({
             ))}
           </div>
         </section>
+
+        {/* Recommended for You */}
+        {recommendedAlbums.length > 0 && (
+          <section style={styles.section}>
+            <h2 style={styles.sectionHeader}>Recommended For You</h2>
+            {renderAlbumGrid(recommendedAlbums)}
+          </section>
+        )}
 
         {/* Recently Added */}
         <section style={styles.section}>
@@ -1176,6 +1217,69 @@ export const MainContent: React.FC<MainContentProps> = ({
     );
   };
 
+  // BROWSE ALL VIEW
+  const renderBrowseAll = () => {
+    if (loadingAll) {
+      return (
+        <div style={styles.loaderContainer}>
+          <div style={styles.spinner} className="spin" />
+          <span>Loading catalog...</span>
+        </div>
+      );
+    }
+
+    return (
+      <div style={styles.detailContainer}>
+        <div style={{ ...styles.detailHeaderBackground, background: 'linear-gradient(to bottom, #1e3a8a 0%, var(--bg-panel) 100%)' }} />
+
+        <div style={styles.detailHeaderContent}>
+          <div style={{ ...styles.discoverArtPlaceholder, backgroundColor: '#1e40af' }}>
+            <ListMusic size={64} color="#fff" />
+          </div>
+          <div style={styles.detailInfo}>
+            <span style={styles.detailLabel}>LIBRARY</span>
+            <h1 style={styles.detailTitle}>All Albums</h1>
+            <div style={styles.detailMeta}>
+              <span>{allAlbums.length} albums</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: '0 28px 28px 28px' }}>
+          {allAlbums.length === 0 ? (
+            <p style={styles.emptyText}>No albums found in library.</p>
+          ) : (
+            <div style={styles.grid}>
+              {allAlbums.map(album => {
+                const coverUrl = subsonic.getCoverArtUrl(album.coverArt || album.id, 200);
+                return (
+                  <div
+                    key={album.id}
+                    onClick={() => openAlbum(album.id)}
+                    style={styles.card}
+                    className="clickable"
+                  >
+                    <img
+                      src={coverUrl}
+                      alt={album.name}
+                      style={styles.cardCover}
+                      onError={async (e) => {
+                        const fallback = await metadataScraper.getFallbackCoverArt(album.artist, album.name);
+                        (e.target as HTMLImageElement).src = fallback || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=120&auto=format&fit=crop';
+                      }}
+                    />
+                    <div style={styles.cardTitle} className="truncate">{album.name}</div>
+                    <div style={styles.cardArtist} className="truncate">{album.artist}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // COMMON TRACK LIST RENDERER
   const renderTracksList = (tracks: any[], showAlbumColumn = true, isPlaylistView = false) => {
     return (
@@ -1339,6 +1443,8 @@ export const MainContent: React.FC<MainContentProps> = ({
         return renderDiscover();
       case 'starred':
         return renderStarred();
+      case 'all':
+        return renderBrowseAll();
       default:
         return renderHome();
     }

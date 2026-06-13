@@ -320,9 +320,9 @@ export class SubsonicClient {
   }
 
   /**
-   * Get album list. Type can be: 'newest', 'random', 'frequent', 'recent' (recently played)
+   * Get album list. Type can be: 'newest', 'random', 'frequent', 'recent', 'alphabeticalByName', 'alphabeticalByArtist'
    */
-  public async getAlbumList(type: 'newest' | 'random' | 'frequent' | 'recent', size: number = 20, offset: number = 0): Promise<any[]> {
+  public async getAlbumList(type: 'newest' | 'random' | 'frequent' | 'recent' | 'alphabeticalByName' | 'alphabeticalByArtist', size: number = 20, offset: number = 0): Promise<any[]> {
     const res = await this.request('getAlbumList2.view', {
       type,
       size: size.toString(),
@@ -397,7 +397,13 @@ export class SubsonicClient {
 
   public async getPlaylists(): Promise<any[]> {
     const res = await this.request('getPlaylists.view');
-    return res.playlists?.playlist || [];
+    const playlists = res.playlists?.playlist || [];
+    // Filter out auto-imported M3U albums: they often don't match the current user's username or end in .m3u
+    return playlists.filter((p: any) => 
+      p.owner === this.username && 
+      !p.name.toLowerCase().endsWith('.m3u') && 
+      !p.name.toLowerCase().endsWith('.m3u8')
+    );
   }
 
   public async getPlaylist(id: string): Promise<any> {

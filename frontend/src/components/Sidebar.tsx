@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { subsonic } from '../subsonic';
-import { Home, Search, Heart, Sparkles, FolderPlus, LogOut, Disc, Settings } from 'lucide-react';
+import { Home, Search, Heart, Sparkles, FolderPlus, LogOut, Disc, Settings, ListMusic } from 'lucide-react';
 
 interface SidebarProps {
   activeView: string;
@@ -106,6 +106,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span>Library</span>
           </li>
           <li
+            onClick={() => navigateTo('all')}
+            style={{
+              ...styles.navItem,
+              ...(activeView === 'all' ? styles.activeNavItem : {})
+            }}
+          >
+            <ListMusic size={20} />
+            <span>Catalogue</span>
+          </li>
+          <li
             onClick={() => navigateTo('discover')}
             style={{
               ...styles.navItem,
@@ -150,7 +160,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer Area with Logout & Admin */}
       <div style={styles.footer}>
-        <a href={`http://${window.location.hostname}:4534/app/`} target="_blank" rel="noopener noreferrer" style={styles.adminBtn}>
+        <a href="/app/" target="_blank" rel="noopener noreferrer" style={styles.adminBtn}>
           <Settings size={16} />
           <span>Admin Panel</span>
         </a>
